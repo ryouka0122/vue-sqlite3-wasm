@@ -1,48 +1,93 @@
 <script setup>
-import HelloWorld from './components/HelloWorld.vue'
-import TheWelcome from './components/TheWelcome.vue'
-import SampleSqlite3Wasm from "@/components/SampleSqlite3Wasm.vue";
 </script>
 
 <template>
-  <header>
-    <img alt="Vue logo" class="logo" src="./assets/logo.svg" width="125" height="125" />
-
-    <div class="wrapper">
-      <HelloWorld msg="You did it!" />
-    </div>
-  </header>
-
   <main>
-    <SampleSqlite3Wasm />
+    <div>
+      <v-text-field label="Name"></v-text-field>
+    </div>
   </main>
 </template>
+
+<script>
+import {sqlite3Worker1Promiser} from "@sqlite.org/sqlite-wasm";
+
+export default {
+  async mounted() {
+    try {
+      console.log('Loading and initializing SQLite3 module...');
+      const promiser = await new Promise((resolve) => {
+        const _promiser = sqlite3Worker1Promiser({
+          onready: () => {
+            resolve(_promiser);
+          },
+        });
+      });
+
+      console.log('Done initializing. Running demo...');
+
+      let response;
+
+      response = await promiser('config-get', {});
+      console.log('Running SQLite3 version', response.result.version.libVersion);
+
+      response = await promiser('open', {
+        filename: 'file:worker-promiser.sqlite3?vfs=opfs',
+      });
+      const { dbId } = response;
+      console.log(
+          'OPFS is available, created persisted database at',
+          response.result.filename.replace(/^file:(.*?)\?vfs=opfs$/, '$1'),
+      );
+
+      await promiser('exec', { dbId, sql: 'CREATE TABLE IF NOT EXISTS t(a,b)' });
+      console.log('Creating a table...');
+
+      console.log('Insert some data using exec()...');
+      for (let i = 20; i <= 25; ++i) {
+        await promiser('exec', {
+          dbId,
+          sql: 'INSERT INTO t(a,b) VALUES (?,?)',
+          bind: [i, i * 2],
+        });
+      }
+
+      console.log('Query data with exec()');
+      await promiser('exec', {
+        dbId,
+        sql: 'SELECT a FROM t ORDER BY a LIMIT 3',
+        callback: (result) => {
+          if (!result.row) {
+            return;
+          }
+          console.log(result.row);
+        },
+      });
+
+      await promiser('close', { dbId });
+    } catch (err) {
+      if (!(err instanceof Error)) {
+        err = new Error(err.result.message);
+      }
+      console.error(err.name, err.message);
+    }
+
+  }
+}
+</script>
 
 <style scoped>
 header {
   line-height: 1.5;
 }
-
-.logo {
-  display: block;
-  margin: 0 auto 2rem;
+.record {
+  display: flex;
+}
+.record:nth-child(n+2) {
+  padding: 1rem 0;
 }
 
-@media (min-width: 1024px) {
-  header {
-    display: flex;
-    place-items: center;
-    padding-right: calc(var(--section-gap) / 2);
-  }
-
-  .logo {
-    margin: 0 2rem 0 0;
-  }
-
-  header .wrapper {
-    display: flex;
-    place-items: flex-start;
-    flex-wrap: wrap;
-  }
+.rem5 {
+  width: 5rem;
 }
 </style>

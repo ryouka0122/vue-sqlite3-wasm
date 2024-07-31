@@ -9,8 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mdi/font": "^7.4.47",
     "@sqlite.org/sqlite-wasm": "^3.46.0-build2",
-    "vue": "^3.4.29"
+    "vue": "^3.4.29",
+    "vuetify": "^3.6.13"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.5",
