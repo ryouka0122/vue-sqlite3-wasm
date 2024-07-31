@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@sqlite.org/sqlite-wasm": "^3.46.0-build2",
     "vue": "^3.4.29"
   },
   "devDependencies": {
