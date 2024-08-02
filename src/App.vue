@@ -7,12 +7,13 @@
       <v-btn @click="insertSample">サンプルデータ追加</v-btn>
       <v-btn @click="reload">再読み込み</v-btn>
       <v-btn @click="truncateTable">テーブルクリア</v-btn>
-      <v-btn disabled @click="importFile">ファイル読み込み</v-btn>
-      <v-btn disabled @click="exportFile">ファイル出力</v-btn>
+      <v-btn @click="showInputDialog">ファイル読み込み</v-btn>
+      <input ref="fileSelector" type="file" style="display: none;" @change="importFile">
+      <v-btn @click="exportFile">ファイル出力</v-btn>
     </div>
     <div class="input-form">
       <div>
-        <v-text-field label="RowID" v-model="inputRowID" readonly></v-text-field>
+        <v-text-field label="RowID" v-model="inputRowID" readonly style="display:none"></v-text-field>
         <v-text-field label="Name" v-model="inputName"></v-text-field>
         <v-text-field label="Age" v-model="inputAge"></v-text-field>
         <v-select label="Gender" v-model="inputGender" :items="['Male', 'Female', 'Other']">
@@ -31,6 +32,9 @@
 
 <script>
 import {sqlite3Worker1Promiser} from "@sqlite.org/sqlite-wasm";
+
+const SQLITE3_DB_FILENAME = "vue-sqlite3-wasm.sqlite3"
+const SQLITE3_DB = `file:${SQLITE3_DB_FILENAME}?vfs=opfs`
 
 export default {
   computed: {
@@ -89,7 +93,7 @@ export default {
               }
               resultList.push(entity)
             }
-            console.log(result)
+            // console.log(result)
           }
         })
         resolve(resultList)
@@ -109,16 +113,60 @@ export default {
       })
     },
     /**
+     * ファイル選択ダイアログ表示
+     */
+    showInputDialog() {
+      this.$refs.fileSelector.click();
+    },
+    /**
      * ファイル取り込み
      */
-    importFile() {
+    importFile(e) {
+      const file = this.$refs.fileSelector.files[0]
+      const reader = new FileReader()
 
+      reader.addEventListener("load", async () => {
+        // OPFSのファイル操作
+        const root = await navigator.storage.getDirectory()
+
+        // SQLITE3のファイルに取り込んだファイルデータを流し込む
+        const hNewSqliteFile = await root.getFileHandle(SQLITE3_DB_FILENAME, {create: true})
+        const accessHandle = await hNewSqliteFile.createWritable()
+        await accessHandle.write(reader.result)
+        await accessHandle.close()
+
+        // 流し込んだデータでSQLITE3を開きなおす
+        await this.sqlWorker("open", { filename: ":memory:" })
+
+        // 画面の再表示
+        this.reload()
+      })
+      reader.readAsArrayBuffer(file)
     },
+
     /**
      * ファイル出力
      */
     exportFile() {
+      this.sqlWorker("export", {
+        dbId: this.dbId,
+      }).then((response) => {
+        const filename = response.result.filename.split("?")[0]
+        const blob = new Blob([response.result.byteArray], { type: "application/x-sqlite3" })
 
+        // アンカーを使って，ファイルをダウンロード
+        const a = document.createElement("a");
+        document.body.appendChild(a);
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        a.addEventListener("click", () => {
+          setTimeout(() => {
+            URL.revokeObjectURL(a.href);
+            a.remove();
+          }, 500);
+        });
+        a.click()
+      })
     },
     /**
      * 保存
@@ -153,6 +201,7 @@ export default {
     console.log('Loading and initializing SQLite3 module...');
     this.sqlWorker = await new Promise((resolve) => {
       const _promiser = sqlite3Worker1Promiser({
+        //debug: console.log,
         onready: () => {
           resolve(_promiser);
         },
@@ -163,13 +212,13 @@ export default {
 
     // バージョン出力
     this.sqlWorker('config-get', {}).then(response => {
-      console.log('Running SQLite3 version', response.result.version.libVersion);
+      console.log('Running SQLite3 config:', response);
     })
 
 
     // DBファイル読み込み
     this.sqlWorker('open', {
-      filename: 'file:vue-sqlite3-wasm.sqlite3?vfs=opfs',
+      filename: SQLITE3_DB,
     }).then(response => {
       // 開けたら，IDを保存しておく
       this.dbId = response.dbId;
