@@ -1,6 +1,3 @@
-<script setup>
-</script>
-
 <template>
   <div style="display:flex">
     <div class="manipulation">
@@ -20,21 +17,36 @@
         </v-select>
 
       </div>
+      <v-btn @click="clear">クリア</v-btn>
       <v-btn @click="save" :disabled="disableSave">保存</v-btn>
+      <v-btn @click="remove" :disabled="!inputRowID">削除</v-btn>
     </div>
   </div>
   <div class="data-grid">
-    <v-data-table :items="dataList">
-
+    <v-data-table
+        v-model="selectedItems"
+        :items="dataList"
+        return-object
+        show-select
+    >
+      <template v-slot:top>
+        <div>
+          <v-btn @click="removeSelectedItems" :disabled="selectedItems.length === 0">選択行の削除</v-btn>
+        </div>
+      </template>
     </v-data-table>
   </div>
 </template>
 
 <script>
-import {sqlite3Worker1Promiser} from "@sqlite.org/sqlite-wasm";
-
 const SQLITE3_DB_FILENAME = "vue-sqlite3-wasm.sqlite3"
-const SQLITE3_DB = `file:${SQLITE3_DB_FILENAME}?vfs=opfs`
+
+import {
+  SqliteDriver,
+  downloadSqlite3Data,
+  uploadSqlite3Data
+} from "@/sqlite3/index.js";
+
 
 export default {
   computed: {
@@ -45,6 +57,71 @@ export default {
     }
 
   },
+  watch: {
+    selectedItems() {
+      if (this.selectedItems.length > 0) {
+        const lastData = this.selectedItems[this.selectedItems.length - 1]
+        this.inputRowID = lastData.USER_ID
+        this.inputName = lastData.NAME
+        this.inputAge = lastData.AGE
+        this.inputGender = lastData.GENDER
+      } else {
+        this.inputRowID = null
+        this.inputName = ""
+        this.inputAge = ""
+        this.inputGender = ""
+      }
+    }
+  },
+
+  data() {
+    return {
+      // 入力情報
+      inputRowID: null,
+      inputName: "",
+      inputAge: "",
+      inputGender: "",
+
+
+      // グリッドデータ
+      dataList: [],
+      selectedItems: [],
+
+      // Sqlite-WASM ドライバー
+      sqliteDriver: null,
+    }
+  },
+
+  async mounted() {
+    // インスタンスの生成
+    this.sqliteDriver = await SqliteDriver.build(SQLITE3_DB_FILENAME)
+
+    // DBのオープン
+    await this.sqliteDriver.open()
+
+    // テーブルの初期化
+    this.sqliteDriver.exec({
+      sql: `CREATE TABLE IF NOT EXISTS USER_INFO(
+                  USER_ID INTEGER PRIMARY KEY,
+                  NAME TEXT NOT NULL,
+                  AGE INTEGER NOT NULL,
+                  GENDER TEXT NOT NULL
+              )`
+    }).then(() => {
+      // データ表示
+      this.reload()
+    }).catch((err) => {
+      if (!(err instanceof Error)) {
+        err = new Error(err.result.message);
+      }
+      console.error(err.name, err.message);
+    })
+  },
+
+  unmounted() {
+    this.sqliteDriver.close()
+  },
+
   methods: {
     /**
      * サンプルデータ追加
@@ -53,8 +130,7 @@ export default {
       new Promise(async (resolve) => {
         let lastId = 0
 
-        await this.sqlWorker('exec', {
-          dbId: this.dbId,
+        await this.sqliteDriver.exec({
           sql: `SELECT count(*) FROM USER_INFO`,
           callback: (result) => {
             if (result.row) {
@@ -65,8 +141,7 @@ export default {
 
         console.log('Insert sample data...');
         for (let i = 0; i < 5; i++) {
-          this.sqlWorker('exec', {
-            dbId: this.dbId,
+          this.sqliteDriver.exec({
             sql: `INSERT INTO USER_INFO(NAME, AGE, GENDER) VALUES (?, ?, ?)`,
             bind: [`User${lastId + (i + 1)}`, 20, 'Other']
           })
@@ -79,34 +154,27 @@ export default {
     /**
      * 再読み込み
      */
-    reload() {
-      new Promise(async (resolve) => {
-        const resultList = []
-        await this.sqlWorker('exec', {
-          dbId: this.dbId,
-          sql: `SELECT * FROM USER_INFO`,
-          callback: (result) => {
-            if (result.row) {
-              const entity = {}
-              for (const index in result.row) {
-                entity[result.columnNames[index]] = result.row[index]
-              }
-              resultList.push(entity)
+    async reload() {
+      const resultList = []
+      await this.sqliteDriver.exec({
+        sql: `SELECT * FROM USER_INFO`,
+        callback: (result) => {
+          if (result.row) {
+            const entity = {}
+            for (const index in result.row) {
+              entity[result.columnNames[index]] = result.row[index]
             }
-            // console.log(result)
+            resultList.push(entity)
           }
-        })
-        resolve(resultList)
-      }).then(result => {
-        this.dataList = result;
+        }
       })
+      this.dataList = resultList
     },
     /**
      * クリア
      */
     truncateTable() {
-      this.sqlWorker('exec', {
-        dbId: this.dbId,
+      this.sqliteDriver.exec({
         sql: `delete from USER_INFO`
       }).then(() => {
         this.reload()
@@ -121,132 +189,63 @@ export default {
     /**
      * ファイル取り込み
      */
-    importFile(e) {
+    async importFile() {
       const file = this.$refs.fileSelector.files[0]
-      const reader = new FileReader()
 
-      reader.addEventListener("load", async () => {
-        // OPFSのファイル操作
-        const root = await navigator.storage.getDirectory()
+      await uploadSqlite3Data(this.sqliteDriver, file)
 
-        // SQLITE3のファイルに取り込んだファイルデータを流し込む
-        const hNewSqliteFile = await root.getFileHandle(SQLITE3_DB_FILENAME, {create: true})
-        const accessHandle = await hNewSqliteFile.createWritable()
-        await accessHandle.write(reader.result)
-        await accessHandle.close()
-
-        // 流し込んだデータでSQLITE3を開きなおす
-        await this.sqlWorker("open", { filename: ":memory:" })
-
-        // 画面の再表示
-        this.reload()
-      })
-      reader.readAsArrayBuffer(file)
+      await this.reload()
     },
 
     /**
      * ファイル出力
      */
     exportFile() {
-      this.sqlWorker("export", {
-        dbId: this.dbId,
-      }).then((response) => {
-        const filename = response.result.filename.split("?")[0]
-        const blob = new Blob([response.result.byteArray], { type: "application/x-sqlite3" })
-
-        // アンカーを使って，ファイルをダウンロード
-        const a = document.createElement("a");
-        document.body.appendChild(a);
-        a.href = URL.createObjectURL(blob);
-        a.download = filename;
-        a.addEventListener("click", () => {
-          setTimeout(() => {
-            URL.revokeObjectURL(a.href);
-            a.remove();
-          }, 500);
-        });
-        a.click()
-      })
+      downloadSqlite3Data(this.sqliteDriver, SQLITE3_DB_FILENAME)
+    },
+    /**
+     *
+     */
+    clear() {
+      this.inputRowID = null
+      this.inputName = ""
+      this.inputAge = ""
+      this.inputGender = ""
     },
     /**
      * 保存
      */
     save() {
-      this.sqlWorker('exec', {
-        dbId: this.dbId,
+      this.sqliteDriver.exec({
         sql: `INSERT INTO USER_INFO(NAME, AGE, GENDER) VALUES (?, ?, ?)`,
-        bind: [this.inputName, this.inputAge, this.inputGender]
+        bind: [this.inputName, this.inputAge, this.inputGender],
+      }).then(() => {
+        this.clear()
+        this.reload()
+      })
+    },
+
+    remove() {
+      this.sqliteDriver.exec({
+        sql: `DELETE FROM USER_INFO WHERE USER_ID = ?`,
+        bind: [this.inputRowID],
       }).then(() => {
         this.reload()
       })
     },
-  },
-
-  data() {
-    return {
-      inputRowID: null,
-      inputName: "",
-      inputAge: "",
-      inputGender: "",
-
-      // Sqlite3-wasm
-      sqlWorker: null,
-      dbId: null,
-      dataList: [],
-    }
-  },
-
-  async mounted() {
-    // Sqlite3Wasmのワーカーの生成
-    console.log('Loading and initializing SQLite3 module...');
-    this.sqlWorker = await new Promise((resolve) => {
-      const _promiser = sqlite3Worker1Promiser({
-        //debug: console.log,
-        onready: () => {
-          resolve(_promiser);
-        },
-      });
-    });
-
-    console.log('Done initializing. Running demo...');
-
-    // バージョン出力
-    this.sqlWorker('config-get', {}).then(response => {
-      console.log('Running SQLite3 config:', response);
-    })
-
-
-    // DBファイル読み込み
-    this.sqlWorker('open', {
-      filename: SQLITE3_DB,
-    }).then(response => {
-      // 開けたら，IDを保存しておく
-      this.dbId = response.dbId;
-    }).then(() => {
-      // テーブルの初期設定
-      console.log('Creating a table...');
-      return this.sqlWorker('exec', {
-        dbId: this.dbId,
-        sql: `CREATE TABLE IF NOT EXISTS USER_INFO(
-                  USER_ID INTEGER PRIMARY KEY,
-                  NAME TEXT NOT NULL,
-                  AGE INTEGER NOT NULL,
-                  GENDER TEXT NOT NULL
-              )`
+    removeSelectedItems() {
+      const promiseList = this.selectedItems.map(e => {
+        return this.sqliteDriver.exec({
+          sql: `DELETE FROM USER_INFO WHERE USER_ID = ?`,
+          bind: [e.USER_ID],
+        })
       })
-    }).then(() => {
-      // データ表示
-      this.reload()
-    }).catch((err) => {
-      if (!(err instanceof Error)) {
-        err = new Error(err.result.message);
-      }
-      console.error(err.name, err.message);
-    })
-  },
 
-  unmounted() {
-    this.sqlWorker("close", {dbId: this.dbId})
+      Promise.all(promiseList).then(() => {
+        this.selectedItems = []
+        this.reload()
+      })
+    }
   },
 }
 </script>
