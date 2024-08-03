@@ -10,7 +10,7 @@
     </div>
     <div class="input-form">
       <div>
-        <v-text-field label="RowID" v-model="inputRowID" readonly style="display:none"></v-text-field>
+        <v-text-field label="UserID(readonly)" v-model="inputUserID" readonly></v-text-field>
         <v-text-field label="Name" v-model="inputName"></v-text-field>
         <v-text-field label="Age" v-model="inputAge"></v-text-field>
         <v-select label="Gender" v-model="inputGender" :items="['Male', 'Female', 'Other']">
@@ -19,7 +19,7 @@
       </div>
       <v-btn @click="clear">クリア</v-btn>
       <v-btn @click="save" :disabled="disableSave">保存</v-btn>
-      <v-btn @click="remove" :disabled="!inputRowID">削除</v-btn>
+      <v-btn @click="remove" :disabled="!inputUserID">削除</v-btn>
     </div>
   </div>
   <div class="data-grid">
@@ -61,12 +61,12 @@ export default {
     selectedItems() {
       if (this.selectedItems.length > 0) {
         const lastData = this.selectedItems[this.selectedItems.length - 1]
-        this.inputRowID = lastData.USER_ID
+        this.inputUserID = lastData.USER_ID
         this.inputName = lastData.NAME
         this.inputAge = lastData.AGE
         this.inputGender = lastData.GENDER
       } else {
-        this.inputRowID = null
+        this.inputUserID = null
         this.inputName = ""
         this.inputAge = ""
         this.inputGender = ""
@@ -77,7 +77,7 @@ export default {
   data() {
     return {
       // 入力情報
-      inputRowID: null,
+      inputUserID: null,
       inputName: "",
       inputAge: "",
       inputGender: "",
@@ -139,7 +139,6 @@ export default {
           }
         })
 
-        console.log('Insert sample data...');
         for (let i = 0; i < 5; i++) {
           this.sqliteDriver.exec({
             sql: `INSERT INTO USER_INFO(NAME, AGE, GENDER) VALUES (?, ?, ?)`,
@@ -151,6 +150,7 @@ export default {
         this.reload()
       })
     },
+
     /**
      * 再読み込み
      */
@@ -170,8 +170,9 @@ export default {
       })
       this.dataList = resultList
     },
+
     /**
-     * クリア
+     * テーブルクリア
      */
     truncateTable() {
       this.sqliteDriver.exec({
@@ -180,12 +181,14 @@ export default {
         this.reload()
       })
     },
+
     /**
      * ファイル選択ダイアログ表示
      */
     showInputDialog() {
       this.$refs.fileSelector.click();
     },
+
     /**
      * ファイル取り込み
      */
@@ -203,36 +206,63 @@ export default {
     exportFile() {
       downloadSqlite3Data(this.sqliteDriver, SQLITE3_DB_FILENAME)
     },
+
     /**
-     *
+     * 入力値のクリア
      */
-    clear() {
-      this.inputRowID = null
+    clearInput() {
+      this.inputUserID = null
       this.inputName = ""
       this.inputAge = ""
       this.inputGender = ""
     },
+
     /**
      * 保存
      */
     save() {
+      if (this.inputUserID === null) {
+        // UserIDがないときはデータ追加
+        this.sqliteDriver.exec({
+          sql: `INSERT INTO USER_INFO(NAME, AGE, GENDER) VALUES (?, ?, ?)`,
+          bind: [this.inputName, this.inputAge, this.inputGender],
+        }).then(() => {
+          this.clearInput()
+          this.selectedItems = []
+          this.reload()
+        })
+      } else {
+        // UserIDがあるときはデータ更新
+        this.sqliteDriver.exec({
+          sql: `UPDATE USER_INFO SET
+                NAME=?,
+                AGE=?,
+                GENDER=?
+               WHERE USER_ID=?`,
+          bind: [this.inputName, this.inputAge, this.inputGender, this.inputUserID],
+        }).then(() => {
+          this.clearInput()
+          this.selectedItems = []
+          this.reload()
+        })
+      }
+    },
+
+    /**
+     * データの削除
+     */
+    remove() {
       this.sqliteDriver.exec({
-        sql: `INSERT INTO USER_INFO(NAME, AGE, GENDER) VALUES (?, ?, ?)`,
-        bind: [this.inputName, this.inputAge, this.inputGender],
+        sql: `DELETE FROM USER_INFO WHERE USER_ID = ?`,
+        bind: [this.inputUserID],
       }).then(() => {
-        this.clear()
         this.reload()
       })
     },
 
-    remove() {
-      this.sqliteDriver.exec({
-        sql: `DELETE FROM USER_INFO WHERE USER_ID = ?`,
-        bind: [this.inputRowID],
-      }).then(() => {
-        this.reload()
-      })
-    },
+    /**
+     * 選択行のデータ削除
+     */
     removeSelectedItems() {
       const promiseList = this.selectedItems.map(e => {
         return this.sqliteDriver.exec({
