@@ -17,13 +17,14 @@ class SqliteDriver {
   dbId
 
   /**
-   *
-   * @param filename {string}
+   * インスタンス生成
+   * @param filename {string} OPFS上のファイル名
    * @returns {Promise<SqliteDriver>}
    */
   static async build(filename) {
     const driver = new SqliteDriver(filename);
 
+    // Sqlite3-worker1-promiserの初期化
     driver.worker = await new Promise((resolve) => {
       const p = sqlite3Worker1Promiser({
         //debug: console.log,
@@ -33,12 +34,11 @@ class SqliteDriver {
       });
     });
 
-    console.log("SqliteDriver:initialize:", driver)
     return driver;
   }
 
   /**
-   *
+   * コンストラクタ
    * @param sqlite_db_file {string}
    */
   constructor (sqlite_db_file) {
@@ -47,7 +47,7 @@ class SqliteDriver {
   }
 
   /**
-   *
+   * DBデータの出力
    * @returns Promise<Blob>
    */
   export_data() {
@@ -61,15 +61,15 @@ class SqliteDriver {
   }
 
   /**
-   *
-   * @returns {Promise<any>}
+   * 設定情報の取得
+   * @returns {Promise<*>}
    */
   get_config() {
     return this.worker("config-get", {})
   }
 
   /**
-   *
+   * DBのオープン
    * @returns {Promise<void>}
    */
   open() {
@@ -81,6 +81,11 @@ class SqliteDriver {
     })
   }
 
+  /**
+   * SQLの実行
+   * @param params {Object}
+   * @returns {Promise<*>}
+   */
   exec(params) {
     return this.worker("exec", {
       dbId: this.dbId,
@@ -88,6 +93,10 @@ class SqliteDriver {
     })
   }
 
+  /**
+   * DBのクローズ
+   * @returns {Promise<*>}
+   */
   close() {
     return this.worker("close", {
       dbId: this.dbId,
