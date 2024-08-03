@@ -44,6 +44,7 @@ import {
   downloadSqlite3Data,
   uploadSqlite3Data
 } from "@/sqlite3";
+import {UserInfoClient} from "@/clients/UserInfoClient";
 
 const SQLITE3_DB_FILENAME = "vue-sqlite3-wasm.sqlite3"
 
@@ -83,6 +84,8 @@ export default {
   },
 
   data() {
+    const driver = new SqliteDriver()
+    const client = new UserInfoClient(driver)
     return {
       // 入力情報
       inputUserID: null as number | null,
@@ -96,7 +99,8 @@ export default {
       selectedItems: [] as UserInfoEntity[],
 
       // Sqlite-WASM ドライバー
-      sqliteDriver: new SqliteDriver(),
+      sqliteDriver: driver,
+      userInfoClient: client
     }
   },
 
@@ -108,14 +112,7 @@ export default {
     await this.sqliteDriver.open()
 
     // テーブルの初期化
-    this.sqliteDriver.exec({
-      sql: `CREATE TABLE IF NOT EXISTS USER_INFO(
-                  USER_ID INTEGER PRIMARY KEY,
-                  NAME TEXT NOT NULL,
-                  AGE INTEGER NOT NULL,
-                  GENDER TEXT NOT NULL
-              )`
-    }).then(() => {
+    this.userInfoClient.initialize().then(() => {
       // データ表示
       this.reload()
     }).catch((err) => {
@@ -136,22 +133,11 @@ export default {
      */
     insertSample() {
       new Promise(async (resolve) => {
-        let lastId = 0
 
-        await this.sqliteDriver.exec<{ LAST_USER_ID:number }>({
-          sql: `SELECT max(USER_ID) as LAST_USER_ID FROM USER_INFO`,
-          callback: (row) => {
-            if (row) {
-              lastId = row.record.LAST_USER_ID
-            }
-          }
-        })
+        const lastId = await this.userInfoClient.getLastUserId()
 
         for (let i = 0; i < 5; i++) {
-          this.sqliteDriver.exec({
-            sql: `INSERT INTO USER_INFO(NAME, AGE, GENDER) VALUES (?, ?, ?)`,
-            bind: [`User${lastId + (i + 1)}`, 20, 'Other']
-          }).then(() => {})
+          await this.userInfoClient.insert(`User${lastId + (i + 1)}`, 20, 'Other')
         }
         resolve(null)
       }).then(() => {
@@ -163,25 +149,16 @@ export default {
      * 再読み込み
      */
     async reload() {
-      const resultList = [] as UserInfoEntity[]
-      await this.sqliteDriver.exec<UserInfoEntity>({
-        sql: `SELECT * FROM USER_INFO`,
-        callback: (result) => {
-          if (result) {
-            resultList.push(result.record)
-          }
-        }
+      this.userInfoClient.selectAll().then(resultList => {
+        this.dataList = resultList
       })
-      this.dataList = resultList
     },
 
     /**
      * テーブルクリア
      */
     truncateTable() {
-      this.sqliteDriver.exec({
-        sql: `delete from USER_INFO`
-      }).then(() => {
+      this.userInfoClient.truncateTable().then(() => {
         this.reload()
       })
     },
@@ -227,24 +204,23 @@ export default {
     save() {
       if (this.inputUserID === null) {
         // UserIDがないときはデータ追加
-        this.sqliteDriver.exec({
-          sql: `INSERT INTO USER_INFO(NAME, AGE, GENDER) VALUES (?, ?, ?)`,
-          bind: [this.inputName, this.inputAge!, this.inputGender],
-        }).then(() => {
+        this.userInfoClient.insert(
+            this.inputName,
+            this.inputAge!,
+            this.inputGender
+        ).then(() => {
           this.clearInput()
           this.selectedItems = []
           this.reload()
         })
       } else {
         // UserIDがあるときはデータ更新
-        this.sqliteDriver.exec({
-          sql: `UPDATE USER_INFO SET
-                NAME=?,
-                AGE=?,
-                GENDER=?
-               WHERE USER_ID=?`,
-          bind: [this.inputName, this.inputAge!, this.inputGender, this.inputUserID],
-        }).then(() => {
+        this.userInfoClient.update(
+            this.inputUserID,
+            this.inputName,
+            this.inputAge!,
+            this.inputGender
+        ).then(() => {
           this.clearInput()
           this.selectedItems = []
           this.reload()
@@ -256,10 +232,7 @@ export default {
      * データの削除
      */
     remove() {
-      this.sqliteDriver.exec({
-        sql: `DELETE FROM USER_INFO WHERE USER_ID = ?`,
-        bind: [this.inputUserID!],
-      }).then(() => {
+      this.userInfoClient.delete(this.inputUserID!).then(() => {
         this.reload()
       })
     },
@@ -269,10 +242,7 @@ export default {
      */
     removeSelectedItems() {
       const promiseList = this.selectedItems.map(e => {
-        return this.sqliteDriver.exec({
-          sql: `DELETE FROM USER_INFO WHERE USER_ID = ?`,
-          bind: [e.USER_ID],
-        })
+        return this.userInfoClient.delete(e.USER_ID)
       })
 
       Promise.all(promiseList).then(() => {
