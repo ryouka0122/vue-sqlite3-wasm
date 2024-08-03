@@ -12,12 +12,12 @@
       <div>
         <v-text-field label="UserID(readonly)" v-model="inputUserID" readonly></v-text-field>
         <v-text-field label="Name" v-model="inputName"></v-text-field>
-        <v-text-field label="Age" v-model="inputAge"></v-text-field>
+        <v-text-field label="Age" v-model="inputAge" type="number"></v-text-field>
         <v-select label="Gender" v-model="inputGender" :items="['Male', 'Female', 'Other']">
         </v-select>
 
       </div>
-      <v-btn @click="clear">クリア</v-btn>
+      <v-btn @click="clearInput">クリア</v-btn>
       <v-btn @click="save" :disabled="disableSave">保存</v-btn>
       <v-btn @click="remove" :disabled="!inputUserID">削除</v-btn>
     </div>
@@ -38,21 +38,29 @@
   </div>
 </template>
 
-<script>
-const SQLITE3_DB_FILENAME = "vue-sqlite3-wasm.sqlite3"
-
+<script lang="ts">
 import {
   SqliteDriver,
   downloadSqlite3Data,
   uploadSqlite3Data
-} from "@/sqlite3/index.js";
+} from "@/sqlite3";
+
+const SQLITE3_DB_FILENAME = "vue-sqlite3-wasm.sqlite3"
+
+
+type UserInfoEntity = {
+  USER_ID: number,
+  NAME: string,
+  AGE: number,
+  GENDER: string,
+}
 
 
 export default {
   computed: {
     disableSave() {
       return this.inputName === ""
-          || this.inputAge === ""
+          || this.inputAge === null
           || this.inputGender === ""
     }
 
@@ -68,7 +76,7 @@ export default {
       } else {
         this.inputUserID = null
         this.inputName = ""
-        this.inputAge = ""
+        this.inputAge = null
         this.inputGender = ""
       }
     }
@@ -77,24 +85,24 @@ export default {
   data() {
     return {
       // 入力情報
-      inputUserID: null,
+      inputUserID: null as number | null,
       inputName: "",
-      inputAge: "",
+      inputAge: null as number | null,
       inputGender: "",
 
 
       // グリッドデータ
-      dataList: [],
-      selectedItems: [],
+      dataList: [] as UserInfoEntity[],
+      selectedItems: [] as UserInfoEntity[],
 
       // Sqlite-WASM ドライバー
-      sqliteDriver: null,
+      sqliteDriver: new SqliteDriver(),
     }
   },
 
   async mounted() {
     // インスタンスの生成
-    this.sqliteDriver = await SqliteDriver.build(SQLITE3_DB_FILENAME)
+    await this.sqliteDriver.initialize(SQLITE3_DB_FILENAME)
 
     // DBのオープン
     await this.sqliteDriver.open()
@@ -130,11 +138,11 @@ export default {
       new Promise(async (resolve) => {
         let lastId = 0
 
-        await this.sqliteDriver.exec({
-          sql: `SELECT count(*) FROM USER_INFO`,
-          callback: (result) => {
-            if (result.row) {
-              lastId = result.row[0]
+        await this.sqliteDriver.exec<{ LAST_USER_ID:number }>({
+          sql: `SELECT max(USER_ID) as LAST_USER_ID FROM USER_INFO`,
+          callback: (row) => {
+            if (row) {
+              lastId = row.record.LAST_USER_ID
             }
           }
         })
@@ -143,9 +151,9 @@ export default {
           this.sqliteDriver.exec({
             sql: `INSERT INTO USER_INFO(NAME, AGE, GENDER) VALUES (?, ?, ?)`,
             bind: [`User${lastId + (i + 1)}`, 20, 'Other']
-          })
+          }).then(() => {})
         }
-        resolve()
+        resolve(null)
       }).then(() => {
         this.reload()
       })
@@ -155,16 +163,12 @@ export default {
      * 再読み込み
      */
     async reload() {
-      const resultList = []
-      await this.sqliteDriver.exec({
+      const resultList = [] as UserInfoEntity[]
+      await this.sqliteDriver.exec<UserInfoEntity>({
         sql: `SELECT * FROM USER_INFO`,
         callback: (result) => {
-          if (result.row) {
-            const entity = {}
-            for (const index in result.row) {
-              entity[result.columnNames[index]] = result.row[index]
-            }
-            resultList.push(entity)
+          if (result) {
+            resultList.push(result.record)
           }
         }
       })
@@ -186,14 +190,14 @@ export default {
      * ファイル選択ダイアログ表示
      */
     showInputDialog() {
-      this.$refs.fileSelector.click();
+      (this.$refs.fileSelector as HTMLInputElement).click();
     },
 
     /**
      * ファイル取り込み
      */
     async importFile() {
-      const file = this.$refs.fileSelector.files[0]
+      const file = (this.$refs.fileSelector as HTMLInputElement).files![0]
 
       await uploadSqlite3Data(this.sqliteDriver, file)
 
@@ -213,7 +217,7 @@ export default {
     clearInput() {
       this.inputUserID = null
       this.inputName = ""
-      this.inputAge = ""
+      this.inputAge = null
       this.inputGender = ""
     },
 
@@ -225,7 +229,7 @@ export default {
         // UserIDがないときはデータ追加
         this.sqliteDriver.exec({
           sql: `INSERT INTO USER_INFO(NAME, AGE, GENDER) VALUES (?, ?, ?)`,
-          bind: [this.inputName, this.inputAge, this.inputGender],
+          bind: [this.inputName, this.inputAge!, this.inputGender],
         }).then(() => {
           this.clearInput()
           this.selectedItems = []
@@ -239,7 +243,7 @@ export default {
                 AGE=?,
                 GENDER=?
                WHERE USER_ID=?`,
-          bind: [this.inputName, this.inputAge, this.inputGender, this.inputUserID],
+          bind: [this.inputName, this.inputAge!, this.inputGender, this.inputUserID],
         }).then(() => {
           this.clearInput()
           this.selectedItems = []
@@ -254,7 +258,7 @@ export default {
     remove() {
       this.sqliteDriver.exec({
         sql: `DELETE FROM USER_INFO WHERE USER_ID = ?`,
-        bind: [this.inputUserID],
+        bind: [this.inputUserID!],
       }).then(() => {
         this.reload()
       })

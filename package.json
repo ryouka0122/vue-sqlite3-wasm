@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "run-p type-check \"build-only {@}\" --",
+    "preview": "vite preview",
+    "build-only": "vite build",
+    "type-check": "vue-tsc --build --force"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
@@ -15,7 +17,13 @@
     "vuetify": "^3.6.13"
   },
   "devDependencies": {
+    "@tsconfig/node20": "^20.1.4",
+    "@types/node": "^20.14.5",
     "@vitejs/plugin-vue": "^5.0.5",
-    "vite": "^5.3.1"
+    "@vue/tsconfig": "^0.5.1",
+    "npm-run-all2": "^6.2.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.3.1",
+    "vue-tsc": "^2.0.21"
   }
 }
