@@ -1,4 +1,4 @@
-import SqliteDriver from "@/sqlite3/driver.js";
+import { SqliteDriver } from "@/sqlite3/driver";
 
 /**
  * ファイルのアップロード
@@ -6,7 +6,7 @@ import SqliteDriver from "@/sqlite3/driver.js";
  * @param file {File}
  * @return Promise<void>
  */
-function uploadSqlite3Data(driver, file) {
+function uploadSqlite3Data(driver: SqliteDriver, file: File) {
 
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -15,9 +15,10 @@ function uploadSqlite3Data(driver, file) {
       const root = await navigator.storage.getDirectory()
 
       // SQLITE3のファイルに取り込んだファイルデータを流し込む
-      const hNewSqliteFile = await root.getFileHandle(driver.db_filename, {create: true})
+      const hNewSqliteFile = await root.getFileHandle(
+        driver.get_db_file(), {create: true})
       const accessHandle = await hNewSqliteFile.createWritable()
-      await accessHandle.write(reader.result)
+      await accessHandle.write(reader.result!)
       await accessHandle.close()
 
       // 流し込んだデータでSQLITE3を開きなおす
@@ -29,15 +30,14 @@ function uploadSqlite3Data(driver, file) {
 
 /**
  * ファイルのダウンロード
- * @param driver {SqliteDriver}
- * @param filename {string}
- * @returns {Promise<void>}
+ * @param driver
+ * @param filename
  */
-function downloadSqlite3Data(driver, filename) {
+function downloadSqlite3Data(driver: SqliteDriver, filename: string) {
 
   return new Promise((resolve) => {
     // exportの実行
-    driver.export_data().then(blob => {
+    driver.export_data().then((blob: Blob) => {
 
       // アンカーを使って，ファイルをダウンロード
       const a = document.createElement("a");
@@ -50,7 +50,7 @@ function downloadSqlite3Data(driver, filename) {
           a.remove();
 
           // 処理が終わったらPromiseで後続の処理に遷移
-          resolve()
+          resolve(null)
         }, 500);
       });
       a.click()

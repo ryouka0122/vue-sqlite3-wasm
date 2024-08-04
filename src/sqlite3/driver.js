@@ -17,15 +17,12 @@ class SqliteDriver {
   dbId
 
   /**
-   * インスタンス生成
-   * @param filename {string} OPFS上のファイル名
-   * @returns {Promise<SqliteDriver>}
+   * 初期化
+   * @param sqlite_db_file {string}
    */
-  static async build(filename) {
-    const driver = new SqliteDriver(filename);
-
+  async initialize (sqlite_db_file) {
     // Sqlite3-worker1-promiserの初期化
-    driver.worker = await new Promise((resolve) => {
+    this.worker = await new Promise((resolve) => {
       const p = sqlite3Worker1Promiser({
         //debug: console.log,
         onready: () => {
@@ -34,16 +31,12 @@ class SqliteDriver {
       });
     });
 
-    return driver;
-  }
-
-  /**
-   * コンストラクタ
-   * @param sqlite_db_file {string}
-   */
-  constructor (sqlite_db_file) {
     this.db_filename = sqlite_db_file
     this.opfs_file_path = `file:${sqlite_db_file}?vfs=opfs`
+  }
+
+  get_db_file() {
+    return this.db_filename
   }
 
   /**
@@ -87,9 +80,29 @@ class SqliteDriver {
    * @returns {Promise<*>}
    */
   exec(params) {
+    const convertRow = (result) => {
+      if (!params.callback) {
+        return
+      }
+
+      if (!result.row) {
+        return
+      }
+
+      const record = {}
+      for (const index in result.row) {
+        record[result.columnNames[index]] = result.row[index]
+      }
+
+      params.callback({
+        record
+      })
+    }
+
     return this.worker("exec", {
       dbId: this.dbId,
-      ...params
+      ...params,
+      callback: convertRow
     })
   }
 
@@ -104,4 +117,6 @@ class SqliteDriver {
   }
 }
 
-export default SqliteDriver;
+export {
+  SqliteDriver
+};
