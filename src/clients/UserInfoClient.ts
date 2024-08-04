@@ -1,5 +1,4 @@
 import { SqliteDriver } from "@/sqlite3";
-import type { isDeleteExpression } from "typescript";
 
 type UserInfoEntity = {
   USER_ID: number,

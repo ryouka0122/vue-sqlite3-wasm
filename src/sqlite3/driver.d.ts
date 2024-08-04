@@ -9,7 +9,7 @@ declare type ExecResultRow<T> = {
 
 declare type ExecParams<T> = {
   sql: string,
-  bind?: Object[],
+  bind?: SqlValue[],
   callback?: (row: ExecResultRow<T>) => void,
 }
 
