@@ -25,7 +25,7 @@ npm run dev
 **main.ts**  
 Vueのエントリポイント
 
-**App.vue**
+**App.vue**  
 やることリストの画面ファイル
 
 **constants.ts**  
