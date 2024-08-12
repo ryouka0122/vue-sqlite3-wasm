@@ -10,6 +10,16 @@ type TodoTask = {
   IS_FINISHED: number,
 }
 
+type TodoTaskPlaceholder = {
+  ':taskId': number,
+  ':content': string,
+  ':limitDate': string,
+  ':priority': number,
+  ':memo': string | null,
+  ':isFinished': number,
+}
+
+
 type TodoTaskEntity = {
   taskId: number|null,
   content: string,
@@ -35,17 +45,17 @@ function convertToEntity(data: TodoTask): TodoTaskEntity {
 }
 
 /**
- * エンティティからレコードへの変換処理
+ * エンティティからプレスホルダー用オブジェクトの変換処理
  * @param e
  */
-function convertFromEntity(e: TodoTaskEntity): TodoTask {
+function convertFromEntityToPlaceholder(e: TodoTaskEntity): TodoTaskPlaceholder {
   return {
-    TASK_ID: e.taskId!,
-    CONTENT: e.content,
-    LIMIT_DATE: e.limitDate.toLocaleString(),
-    PRIORITY: e.priority,
-    MEMO: e.memo,
-    IS_FINISHED: e.isFinished ? 1 : 0,
+    ":taskId": e.taskId!,
+    ":content": e.content,
+    ":limitDate": e.limitDate.toLocaleString(),
+    ":priority": e.priority,
+    ":memo": e.memo,
+    ":isFinished": e.isFinished ? 1 : 0,
   }
 }
 
@@ -97,17 +107,20 @@ class TodoTaskClient {
    * @param task
    */
   insert(task: TodoTaskEntity) {
+    const placeholder = convertFromEntityToPlaceholder(task)
     return this.driver.exec({
       sql: `INSERT INTO TODO_TASK(
                 CONTENT, LIMIT_DATE, PRIORITY, MEMO, IS_FINISHED
-            ) VALUES (?, ?, ?, ?, ?)`,
-      bind: [
-        task.content,
-        task.limitDate.toLocaleString(),
-        task.priority,
-        task.memo,
-        0
-      ],
+            ) VALUES (
+                :content, :limitDate, :priority, :memo, :isFinished
+            )`,
+      bind: {
+        ":content": task.content,
+        ":limitDate": task.limitDate.toLocaleString(),
+        ":priority": task.priority,
+        ":memo": task.memo,
+        ":isFinished": task.isFinished ? 1 : 0,
+      }
     })
   }
 
@@ -116,23 +129,16 @@ class TodoTaskClient {
    * @param task
    */
   update(task: TodoTaskEntity) {
-    const record = convertFromEntity(task)
+    const record = convertFromEntityToPlaceholder(task)
     return this.driver.exec({
       sql: `UPDATE TODO_TASK SET
-                CONTENT = ?,
-                LIMIT_DATE = ?,
-                PRIORITY = ?,
-                MEMO = ?,
-                IS_FINISHED = ?
-            WHERE TASK_ID = ?`,
-      bind: [
-        record.CONTENT,
-        record.LIMIT_DATE,
-        record.PRIORITY,
-        record.MEMO,
-        record.IS_FINISHED,
-        record.TASK_ID
-      ],
+                CONTENT = :content,
+                LIMIT_DATE = :limitDate,
+                PRIORITY = :priority,
+                MEMO = :memo,
+                IS_FINISHED = :isFinished
+            WHERE TASK_ID = :taskId`,
+      bind: record,
     })
   }
 
@@ -177,6 +183,5 @@ class TodoTaskClient {
 
 export {
   TodoTaskClient,
-  type TodoTask,
   type TodoTaskEntity
 }
