@@ -1,6 +1,7 @@
 import {
   ExecOptions,
-  SqlValue
+  SqlValue,
+  type BindingSpec,
 } from "@sqlite.org/sqlite-wasm";
 
 declare type ExecResultRow<T> = {
@@ -9,7 +10,7 @@ declare type ExecResultRow<T> = {
 
 declare type ExecParams<T> = {
   sql: string,
-  bind?: SqlValue[],
+  bind?: BindingSpec,
   callback?: (row: ExecResultRow<T>) => void,
 }
 
